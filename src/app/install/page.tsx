@@ -118,25 +118,41 @@ export default function InstallPage() {
             <p>Manifest: <span className="text-paper">{manifestStatus}</span></p>
             <p>Installiert: <span className="text-paper">{isStandalone ? "✅ Ja" : "❌ Nein"}</span></p>
           </div>
-          <button
-            className="btn btn-ghost mt-3 w-full !text-xs"
-            onClick={() => {
-              // Alle Caches löschen
-              caches.keys().then((keys) => {
-                Promise.all(keys.map((k) => caches.delete(k))).then(() => {
-                  // Service Worker neu registrieren
-                  navigator.serviceWorker.getRegistrations().then((regs) => {
-                    Promise.all(regs.map((r) => r.unregister())).then(() => {
-                      window.location.reload();
+          <div className="mt-3 flex gap-2">
+            <button
+              className="btn btn-amber flex-1 !text-xs"
+              onClick={() => {
+                if ("serviceWorker" in navigator) {
+                  navigator.serviceWorker.register("/sw.js", { scope: "/" }).then(() => {
+                    window.location.reload();
+                  }).catch(() => {
+                    window.location.reload();
+                  });
+                } else {
+                  window.location.reload();
+                }
+              }}
+            >
+              <RefreshCw className="size-3.5" />
+              SW registrieren
+            </button>
+            <button
+              className="btn btn-ghost flex-1 !text-xs"
+              onClick={() => {
+                caches.keys().then((keys) => {
+                  Promise.all(keys.map((k) => caches.delete(k))).then(() => {
+                    navigator.serviceWorker.getRegistrations().then((regs) => {
+                      Promise.all(regs.map((r) => r.unregister())).then(() => {
+                        window.location.reload();
+                      });
                     });
                   });
                 });
-              });
-            }}
-          >
-            <RefreshCw className="size-3.5" />
-            Cache leeren & Seite neu laden
-          </button>
+              }}
+            >
+              Cache leeren
+            </button>
+          </div>
         </div>
 
         <Link href="/" className="btn btn-ghost mt-4 w-full">
