@@ -28,28 +28,27 @@ export function SiteHeader() {
           </span>
         </Link>
 
-        <nav className="ml-auto flex items-center gap-1.5">
-          {NAV.map((item) => {
-            const active = pathname === item.href || pathname.startsWith(item.href + "/");
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                className={`flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
-                  active
-                    ? "bg-amber/15 text-amber-soft"
-                    : "text-mute hover:bg-panel hover:text-paper"
-                }`}
-              >
-                <item.icon className="size-4" />
-                {item.label}
-              </Link>
-            );
-          })}
-          <PwaInstallButton compact />
-          <Link href="/scan" className="btn btn-amber ml-2 hidden sm:inline-flex !py-2">
-            <ScanLine className="size-4" strokeWidth={2.4} />
-            Punkt erfassen
+        <nav className="ml-auto flex items-center gap-1">
+          <Link
+            href="/scan"
+            className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium text-mute hover:bg-panel hover:text-paper"
+          >
+            <ScanLine className="size-3.5" />
+            <span className="hidden sm:inline">Scannen</span>
+          </Link>
+          <Link
+            href="/maps"
+            className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium text-mute hover:bg-panel hover:text-paper"
+          >
+            <MapIcon className="size-3.5" />
+            <span className="hidden sm:inline">Karten</span>
+          </Link>
+          <Link
+            href="/install"
+            className="flex items-center gap-1.5 rounded-lg border border-amber/40 bg-amber/10 px-2.5 py-1.5 text-xs font-semibold text-amber hover:bg-amber/20"
+          >
+            <Download className="size-3.5" />
+            App
           </Link>
         </nav>
       </div>
