@@ -1,0 +1,10 @@
+{
+  "framework": "nextjs",
+  "regions": ["fra1"],
+  "functions": {
+    "app/api/ocr/route.ts": {
+      "maxDuration": 60,
+      "memory": 2048
+    }
+  }
+}
