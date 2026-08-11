@@ -22,32 +22,48 @@ export function PwaRegister() {
     if (typeof window === "undefined") return;
     if (!("serviceWorker" in navigator)) return;
 
-    // Service Worker sofort registrieren, auch ohne User-Interaktion
-    navigator.serviceWorker
-      .register("/sw.js", { scope: "/" })
-      .then((registration) => {
-        console.log("[PWA] Service Worker registriert:", registration.scope);
-        // Sofortige Aktivierung erzwingen
-        if (registration.waiting) {
-          registration.waiting.postMessage({ type: "SKIP_WAITING" });
-        }
-        registration.addEventListener("updatefound", () => {
-          const worker = registration.installing;
-          if (!worker) return;
-          worker.addEventListener("statechange", () => {
-            if (worker.state === "installed") {
-              if (navigator.serviceWorker.controller) {
+    // Service Worker sofort und aggressiv registrieren
+    const registerSW = () => {
+      navigator.serviceWorker
+        .register("/sw.js", { scope: "/" })
+        .then((registration) => {
+          console.log("[PWA] SW registriert:", registration.scope);
+          if (registration.waiting) {
+            registration.waiting.postMessage({ type: "SKIP_WAITING" });
+          }
+          registration.addEventListener("updatefound", () => {
+            const worker = registration.installing;
+            if (!worker) return;
+            worker.addEventListener("statechange", () => {
+              if (worker.state === "installed" && navigator.serviceWorker.controller) {
                 toast("Neue App-Version verfügbar – beim nächsten Start aktiv.");
-              } else {
-                console.log("[PWA] Service Worker installiert und aktiv");
               }
-            }
+            });
           });
+        })
+        .catch((err) => {
+          console.warn("[PWA] SW Fehler:", err);
         });
-      })
-      .catch((err) => {
-        console.warn("[PWA] Service Worker Registrierung fehlgeschlagen:", err);
+    };
+
+    // Sofort registrieren
+    registerSW();
+
+    // Bei Sichtbarkeitsänderung nochmal versuchen (Chrome manchmal lazy)
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "visible") {
+        navigator.serviceWorker.getRegistration("/").then((reg) => {
+          if (!reg) registerSW();
+        });
+      }
+    });
+
+    // Nach 2 Sekunden nochmal prüfen
+    setTimeout(() => {
+      navigator.serviceWorker.getRegistration("/").then((reg) => {
+        if (!reg) registerSW();
       });
+    }, 2000);
   }, []);
 
   useEffect(() => {
