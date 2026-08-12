@@ -9,6 +9,13 @@ self.addEventListener("activate", (event) => {
 
 self.addEventListener("fetch", (event) => {
   if (event.request.method !== "GET") return;
+  
+  const url = new URL(event.request.url);
+  
+  // Externe Anfragen (Karten, Fonts, etc.) nicht blockieren
+  if (url.origin !== self.location.origin) return;
+  
+  // Nur interne Seiten cachen
   event.respondWith(
     fetch(event.request).catch(() => caches.match(event.request))
   );
