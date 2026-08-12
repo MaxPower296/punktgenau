@@ -1,0 +1,61 @@
+{
+  "name": "Punktgenau – Reiseführer-GPS-Scanner",
+  "short_name": "Punktgenau",
+  "description": "Fotografiere GPS-Daten aus Reiseführern, prüfe sie per OCR und speichere sie auf Karten.",
+  "id": "/?source=pwa",
+  "start_url": "/?source=pwa",
+  "scope": "/",
+  "lang": "de-DE",
+  "dir": "ltr",
+  "display": "standalone",
+  "display_override": ["window-controls-overlay", "standalone", "minimal-ui"],
+  "orientation": "portrait",
+  "theme_color": "#0b0d0a",
+  "background_color": "#0b0d0a",
+  "categories": ["travel", "navigation", "utilities", "maps"],
+  "launch_handler": {
+    "client_mode": ["navigate-existing", "auto"]
+  },
+  "icons": [
+    {
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/maskable-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/icons/maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Punkt scannen",
+      "short_name": "Scannen",
+      "description": "Foto aufnehmen und Koordinaten erkennen",
+      "url": "/scan?source=shortcut",
+      "icons": [{ "src": "/icons/shortcut-scan.png", "sizes": "192x192", "type": "image/png" }]
+    },
+    {
+      "name": "Meine Karten",
+      "short_name": "Karten",
+      "description": "Gespeicherte Karten und Punkte öffnen",
+      "url": "/maps?source=shortcut",
+      "icons": [{ "src": "/icons/shortcut-map.png", "sizes": "192x192", "type": "image/png" }]
+    }
+  ]
+}

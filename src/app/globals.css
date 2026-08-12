@@ -1,0 +1,316 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: var(--font-sg), ui-sans-serif, system-ui, sans-serif;
+  --font-display: var(--font-fraunces), Georgia, serif;
+  --font-mono: var(--font-plex), ui-monospace, monospace;
+
+  --color-ink: #0b0d0a;
+  --color-ink-2: #10130e;
+  --color-panel: #14180f;
+  --color-card: #171c12;
+  --color-line: #26301f;
+  --color-line-2: #35402b;
+  --color-paper: #ede7d6;
+  --color-mute: #a8b09b;
+  --color-dim: #6b775f;
+  --color-amber: #e9a13b;
+  --color-amber-soft: #f4c069;
+  --color-sage: #9ba692;
+  --color-clay: #e0654a;
+  --color-sky: #7fb4d8;
+}
+
+html[data-theme="light"] {
+  --color-ink: #f7f3e8;
+  --color-ink-2: #ede7d6;
+  --color-panel: #ffffff;
+  --color-card: #ffffff;
+  --color-line: #d8d0b8;
+  --color-line-2: #c2b8a0;
+  --color-paper: #1a1a18;
+  --color-mute: #5a5a55;
+  --color-dim: #8a8a86;
+  --color-sage: #6b7a5e;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  background: var(--color-ink);
+  color: var(--color-paper);
+  font-family: var(--font-sans);
+  /* dezente Korn-Textur */
+  background-image: radial-gradient(
+      1200px 600px at 80% -10%,
+      rgba(233, 161, 59, 0.07),
+      transparent 60%
+    ),
+    radial-gradient(900px 500px at -10% 110%, rgba(155, 166, 146, 0.06), transparent 60%);
+}
+
+::selection {
+  background: var(--color-amber);
+  color: var(--color-ink);
+}
+
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+*::-webkit-scrollbar-thumb {
+  background: var(--color-line-2);
+  border-radius: 8px;
+  border: 2px solid var(--color-ink);
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.font-display {
+  font-family: var(--font-display);
+  font-variation-settings: "opsz" 120;
+  letter-spacing: -0.02em;
+}
+
+/* ---------- Animationen ---------- */
+@keyframes fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes shimmer {
+  from {
+    background-position: 200% 0;
+  }
+  to {
+    background-position: -200% 0;
+  }
+}
+@keyframes pulse-ring {
+  0% {
+    box-shadow: 0 0 0 0 rgba(233, 161, 59, 0.45);
+  }
+  70% {
+    box-shadow: 0 0 0 14px rgba(233, 161, 59, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(233, 161, 59, 0);
+  }
+}
+@keyframes sweep {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+}
+.anim-fade-up {
+  animation: fade-up 0.55s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+.anim-fade-in {
+  animation: fade-in 0.4s ease both;
+}
+.stagger > * {
+  animation: fade-up 0.6s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+.stagger > *:nth-child(1) { animation-delay: 0.04s; }
+.stagger > *:nth-child(2) { animation-delay: 0.1s; }
+.stagger > *:nth-child(3) { animation-delay: 0.16s; }
+.stagger > *:nth-child(4) { animation-delay: 0.22s; }
+.stagger > *:nth-child(5) { animation-delay: 0.28s; }
+.stagger > *:nth-child(6) { animation-delay: 0.34s; }
+
+.shimmer-text {
+  background: linear-gradient(100deg, var(--color-paper) 40%, var(--color-amber-soft) 50%, var(--color-paper) 60%);
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: shimmer 2.4s linear infinite;
+}
+
+/* ---------- Buttons / Felder ---------- */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  border-radius: 0.75rem;
+  padding: 0.75rem 1.2rem; /* Erhöhtes Daumen-Touch-Target für Android (min. 44px) */
+  font-size: 0.875rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  transition: all 0.18s cubic-bezier(0.22, 1, 0.36, 1);
+  cursor: pointer;
+  border: 1px solid transparent;
+  white-space: nowrap;
+  touch-action: manipulation;
+}
+@media (min-width: 768px) {
+  .btn {
+    padding: 0.625rem 1.1rem;
+    font-size: 0.85rem;
+  }
+}
+.btn:active {
+  transform: scale(0.97);
+}
+.btn-amber {
+  background: var(--color-amber);
+  color: #1a1405;
+}
+.btn-amber:hover {
+  background: var(--color-amber-soft);
+}
+.btn-ghost {
+  border-color: var(--color-line-2);
+  color: var(--color-paper);
+  background: transparent;
+}
+.btn-ghost:hover {
+  border-color: var(--color-amber);
+  color: var(--color-amber-soft);
+}
+.btn-danger:hover {
+  border-color: var(--color-clay);
+  color: var(--color-clay);
+}
+.btn[disabled] {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.field {
+  width: 100%;
+  background: rgba(11, 13, 10, 0.6);
+  border: 1px solid var(--color-line);
+  border-radius: 0.65rem;
+  padding: 0.65rem 0.75rem;
+  font-size: 16px; /* Verhindert lästigen Auto-Zoom auf Android & iOS */
+  color: var(--color-paper);
+  outline: none;
+  transition: border-color 0.15s ease;
+}
+@media (min-width: 768px) {
+  .field {
+    font-size: 0.875rem; /* schlanke Schriftgröße auf Desktop */
+    padding: 0.55rem 0.75rem;
+  }
+}
+.field:focus {
+  border-color: var(--color-amber);
+}
+.field::placeholder {
+  color: var(--color-dim);
+}
+textarea.field {
+  resize: vertical;
+  min-height: 5.5rem;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  border: 1px solid var(--color-line);
+  border-radius: 999px;
+  padding: 0.18rem 0.6rem;
+  font-size: 0.7rem;
+  color: var(--color-mute);
+  background: rgba(20, 24, 15, 0.7);
+}
+
+.card {
+  background: linear-gradient(160deg, rgba(23, 28, 18, 0.92), rgba(16, 19, 14, 0.94));
+  border: 1px solid var(--color-line);
+  border-radius: 1.1rem;
+}
+
+/* ---------- Leaflet ---------- */
+.leaflet-container {
+  background: #0d100b;
+  font-family: var(--font-sans);
+  outline: none;
+}
+.leaflet-tile-pane {
+  filter: saturate(0.82) brightness(0.92) contrast(1.02);
+}
+.leaflet-sat .leaflet-tile-pane {
+  filter: none;
+}
+.pg-pin {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 28px;
+  height: 28px;
+  padding: 0 7px;
+  background: var(--pin, #e9a13b);
+  color: #151002;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  border-radius: 50% 50% 50% 6px;
+  transform: rotate(-45deg);
+  border: 2px solid rgba(255, 255, 255, 0.85);
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.55);
+  transition: transform 0.15s ease;
+  cursor: pointer;
+}
+.pg-pin > span {
+  transform: rotate(45deg);
+}
+.pg-pin.selected {
+  box-shadow: 0 0 0 4px rgba(255, 255, 255, 0.9), 0 4px 14px rgba(0, 0, 0, 0.6);
+  z-index: 500;
+}
+.pg-pin.visited {
+  opacity: 0.55;
+  filter: saturate(0.4);
+}
+.pg-user {
+  width: 16px;
+  height: 16px;
+  background: #5aa2ff;
+  border-radius: 999px;
+  border: 3px solid #fff;
+  box-shadow: 0 0 0 6px rgba(90, 162, 255, 0.25);
+  animation: pulse-ring 2s infinite;
+}
+.leaflet-control-zoom a {
+  background: var(--color-panel) !important;
+  color: var(--color-paper) !important;
+  border-color: var(--color-line) !important;
+}
+.leaflet-control-attribution {
+  background: rgba(11, 13, 10, 0.75) !important;
+  color: var(--color-dim) !important;
+  font-size: 9px !important;
+}
+.leaflet-control-attribution a {
+  color: var(--color-dim) !important;
+}
+
+/* Radar im Scanner */
+.radar-sweep {
+  background: conic-gradient(from 0deg, rgba(233, 161, 59, 0.5), transparent 70deg);
+  animation: sweep 1.6s linear infinite;
+  border-radius: 999px;
+}
