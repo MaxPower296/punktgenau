@@ -1,0 +1,19 @@
+<svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <radialGradient id="bg" cx="35%" cy="25%" r="85%">
+      <stop offset="0" stop-color="#f4c069"/>
+      <stop offset="0.55" stop-color="#e9a13b"/>
+      <stop offset="1" stop-color="#b96627"/>
+    </radialGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="14" stdDeviation="18" flood-color="#0b0d0a" flood-opacity="0.42"/>
+    </filter>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="#0b0d0a"/>
+  <circle cx="256" cy="256" r="194" fill="url(#bg)" filter="url(#shadow)"/>
+  <path d="M256 105v302M105 256h302" stroke="#0b0d0a" stroke-width="34" stroke-linecap="round" opacity="0.94"/>
+  <circle cx="256" cy="256" r="94" fill="none" stroke="#0b0d0a" stroke-width="24" opacity="0.94"/>
+  <circle cx="256" cy="256" r="24" fill="#0b0d0a"/>
+  <path d="M321 321l58 58" stroke="#0b0d0a" stroke-width="30" stroke-linecap="round" opacity="0.9"/>
+  <path d="M128 418c48 24 104 33 159 25" stroke="#ede7d6" stroke-width="12" stroke-linecap="round" opacity="0.35"/>
+</svg>
