@@ -1,7 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
-import { Check, X, RotateCw, Crop } from "lucide-react";
+import { useCallback, useRef, useState } from "react";
+import { Check, X, Crop } from "lucide-react";
 
 interface CropEditorProps {
   imageUrl: string;
@@ -10,100 +10,27 @@ interface CropEditorProps {
 }
 
 export function CropEditor({ imageUrl, onCrop, onCancel }: CropEditorProps) {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const containerRef = useRef<HTMLDivElement>(null);
-  const imgRef = useRef<HTMLImageElement | null>(null);
-  const [imgSize, setImgSize] = useState({ w: 0, h: 0 });
-  const [crop, setCrop] = useState({ x: 0, y: 0, w: 0, h: 0 });
+  const [box, setBox] = useState({ x1: 0, y1: 0, x2: 0, y2: 0 });
   const [drawing, setDrawing] = useState(false);
-  const [start, setStart] = useState({ x: 0, y: 0 });
   const [hasCrop, setHasCrop] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
 
-  // Bild laden und zeichnen
-  useEffect(() => {
-    const img = new Image();
-    img.onload = () => {
-      imgRef.current = img;
-      const container = containerRef.current;
-      if (!container) return;
-
-      const maxW = container.clientWidth;
-      const maxH = window.innerHeight * 0.6;
-      const scale = Math.min(maxW / img.width, maxH / img.height, 1);
-      const w = Math.round(img.width * scale);
-      const h = Math.round(img.height * scale);
-      setImgSize({ w, h });
-
-      // Standard-Zuschnitt: mittlere 80% (wo meistens der Text ist)
-      const cx = Math.round(w * 0.1);
-      const cy = Math.round(h * 0.2);
-      const cw = Math.round(w * 0.8);
-      const ch = Math.round(h * 0.6);
-      setCrop({ x: cx, y: cy, w: cw, h: ch });
-      setHasCrop(true);
-    };
-    img.src = imageUrl;
-  }, [imageUrl]);
-
-  // Canvas zeichnen
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    const img = imgRef.current;
-    if (!canvas || !img || !imgSize.w) return;
-
-    canvas.width = imgSize.w;
-    canvas.height = imgSize.h;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-
-    // Bild zeichnen
-    ctx.drawImage(img, 0, 0, imgSize.w, imgSize.h);
-
-    // Abgedunkelter Bereich außerhalb des Zuschnitts
-    ctx.fillStyle = "rgba(0, 0, 0, 0.6)";
-    ctx.fillRect(0, 0, imgSize.w, imgSize.h);
-
-    // Zuschnitt-Bereich heller zeichnen
-    ctx.clearRect(crop.x, crop.y, crop.w, crop.h);
-    ctx.drawImage(img, crop.x, crop.y, crop.w, crop.h, crop.x, crop.y, crop.w, crop.h);
-
-    // Rahmen um den Zuschnitt
-    ctx.strokeStyle = "#e9a13b";
-    ctx.lineWidth = 3;
-    ctx.setLineDash([8, 4]);
-    ctx.strokeRect(crop.x, crop.y, crop.w, crop.h);
-
-    // Griffe an den Ecken
-    const g = 12;
-    ctx.fillStyle = "#e9a13b";
-    ctx.setLineDash([]);
-    // Oben links
-    ctx.fillRect(crop.x - g / 2, crop.y - g / 2, g, g);
-    // Oben rechts
-    ctx.fillRect(crop.x + crop.w - g / 2, crop.y - g / 2, g, g);
-    // Unten links
-    ctx.fillRect(crop.x - g / 2, crop.y + crop.h - g / 2, g, g);
-    // Unten rechts
-    ctx.fillRect(crop.x + crop.w - g / 2, crop.y + crop.h - g / 2, g, g);
-  }, [crop, imgSize]);
-
-  // Maus/Touch-Events
   const getPos = (e: React.MouseEvent | React.TouchEvent) => {
-    const canvas = canvasRef.current;
-    if (!canvas) return { x: 0, y: 0 };
-    const rect = canvas.getBoundingClientRect();
+    const el = containerRef.current;
+    if (!el) return { x: 0, y: 0 };
+    const rect = el.getBoundingClientRect();
     const clientX = "touches" in e ? e.touches[0].clientX : e.clientX;
     const clientY = "touches" in e ? e.touches[0].clientY : e.clientY;
     return {
-      x: Math.max(0, Math.min(imgSize.w, clientX - rect.left)),
-      y: Math.max(0, Math.min(imgSize.h, clientY - rect.top)),
+      x: Math.max(0, Math.min(100, ((clientX - rect.left) / rect.width) * 100)),
+      y: Math.max(0, Math.min(100, ((clientY - rect.top) / rect.height) * 100)),
     };
   };
 
   const handleStart = (e: React.MouseEvent | React.TouchEvent) => {
     e.preventDefault();
     const pos = getPos(e);
-    setStart(pos);
+    setBox({ x1: pos.x, y1: pos.y, x2: pos.x, y2: pos.y });
     setDrawing(true);
     setHasCrop(false);
   };
@@ -112,112 +39,109 @@ export function CropEditor({ imageUrl, onCrop, onCancel }: CropEditorProps) {
     if (!drawing) return;
     e.preventDefault();
     const pos = getPos(e);
-    const x = Math.min(start.x, pos.x);
-    const y = Math.min(start.y, pos.y);
-    const w = Math.abs(pos.x - start.x);
-    const h = Math.abs(pos.y - start.y);
-    if (w > 10 && h > 10) {
-      setCrop({ x: Math.round(x), y: Math.round(y), w: Math.round(w), h: Math.round(h) });
-      setHasCrop(true);
-    }
+    setBox((prev) => ({ ...prev, x2: pos.x, y2: pos.y }));
   };
 
   const handleEnd = () => {
     setDrawing(false);
+    setHasCrop(true);
   };
 
-  // Zuschnitt anwenden
-  const applyCrop = useCallback(() => {
-    const img = imgRef.current;
-    if (!img || !hasCrop) return;
+  const cropStyle = (() => {
+    const x = Math.min(box.x1, box.x2);
+    const y = Math.min(box.y1, box.y2);
+    const w = Math.abs(box.x2 - box.x1);
+    const h = Math.abs(box.y2 - box.y1);
+    if (w < 2 || h < 2) {
+      // Standard: mittlerer Bereich
+      return { left: "5%", top: "10%", width: "90%", height: "80%" };
+    }
+    return { left: `${x}%`, top: `${y}%`, width: `${w}%`, height: `${h}%` };
+  })();
 
-    const canvas = document.createElement("canvas");
-    const scaleX = img.width / imgSize.w;
-    const scaleY = img.height / imgSize.h;
-    canvas.width = Math.round(crop.w * scaleX);
-    canvas.height = Math.round(crop.h * scaleY);
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
+  const applyCrop = useCallback(async () => {
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    img.onload = () => {
+      const canvas = document.createElement("canvas");
+      const x = Math.min(box.x1, box.x2) / 100;
+      const y = Math.min(box.y1, box.y2) / 100;
+      const w = Math.abs(box.x2 - box.x1) / 100;
+      const h = Math.abs(box.y2 - box.y1) / 100;
 
-    ctx.drawImage(
-      img,
-      Math.round(crop.x * scaleX),
-      Math.round(crop.y * scaleY),
-      canvas.width,
-      canvas.height,
-      0,
-      0,
-      canvas.width,
-      canvas.height
-    );
-
-    canvas.toBlob((blob) => {
-      if (blob) {
-        const file = new File([blob], "cropped.jpg", { type: "image/jpeg" });
-        onCrop(file);
+      let sx: number, sy: number, sw: number, sh: number;
+      if (w < 0.02 || h < 0.02) {
+        // Kein Zuschnitt – ganzes Bild
+        sx = 0; sy = 0; sw = img.width; sh = img.height;
+      } else {
+        sx = Math.round(x * img.width);
+        sy = Math.round(y * img.height);
+        sw = Math.round(w * img.width);
+        sh = Math.round(h * img.height);
       }
-    }, "image/jpeg", 0.92);
-  }, [crop, imgSize, hasCrop, onCrop]);
+
+      canvas.width = sw;
+      canvas.height = sh;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return;
+      ctx.drawImage(img, sx, sy, sw, sh, 0, 0, sw, sh);
+      canvas.toBlob((blob) => {
+        if (blob) onCrop(new File([blob], "crop.jpg", { type: "image/jpeg" }));
+      }, "image/jpeg", 0.92);
+    };
+    img.src = imageUrl;
+  }, [box, imageUrl, onCrop]);
 
   return (
     <div className="fixed inset-0 z-[100] flex flex-col bg-ink">
-      {/* Header */}
       <div className="flex items-center justify-between border-b border-line px-4 py-3">
         <div className="flex items-center gap-2">
           <Crop className="size-5 text-amber" />
           <span className="font-semibold text-paper">Zuschnitt-Editor</span>
         </div>
-        <div className="flex items-center gap-2">
-          <button
-            className="btn btn-ghost !px-3 !py-1.5 !text-xs"
-            onClick={() => {
-              // Standard-Zuschnitt zurücksetzen
-              const cx = Math.round(imgSize.w * 0.1);
-              const cy = Math.round(imgSize.h * 0.2);
-              const cw = Math.round(imgSize.w * 0.8);
-              const ch = Math.round(imgSize.h * 0.6);
-              setCrop({ x: cx, y: cy, w: cw, h: ch });
-              setHasCrop(true);
-            }}
-          >
-            <RotateCw className="size-3.5" />
-            Zurücksetzen
-          </button>
-          <button className="btn btn-ghost !px-3 !py-1.5 !text-xs text-clay" onClick={onCancel}>
-            <X className="size-3.5" />
-            Abbrechen
-          </button>
-        </div>
+        <button className="btn btn-ghost !px-3 !py-1.5 !text-xs text-clay" onClick={onCancel}>
+          <X className="size-3.5" /> Abbrechen
+        </button>
       </div>
 
-      {/* Canvas */}
-      <div ref={containerRef} className="flex flex-1 items-center justify-center overflow-auto p-4">
-        <canvas
-          ref={canvasRef}
-          className="max-w-full touch-none cursor-crosshair rounded-lg"
-          style={{ width: imgSize.w, height: imgSize.h }}
+      <div className="flex flex-1 items-center justify-center overflow-hidden p-2">
+        <div
+          ref={containerRef}
+          className="relative touch-none cursor-crosshair"
           onMouseDown={handleStart}
           onMouseMove={handleMove}
           onMouseUp={handleEnd}
-          onMouseLeave={handleEnd}
           onTouchStart={handleStart}
           onTouchMove={handleMove}
           onTouchEnd={handleEnd}
-        />
+        >
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={imageUrl} alt="Zuschnitt" className="max-h-[65vh] max-w-full rounded-lg" draggable={false} />
+          {/* Overlay mit Zuschnitt-Box */}
+          <div className="absolute inset-0 pointer-events-none">
+            {/* Abgedunkelte Ränder */}
+            <div className="absolute inset-0 bg-black/50" />
+            {/* Heller Bereich (Zuschnitt) */}
+            <div
+              className="absolute border-2 border-dashed border-amber bg-transparent"
+              style={cropStyle}
+            />
+            {/* Ecken-Griffe */}
+            <div className="absolute size-4 border-2 border-amber bg-ink rounded-sm" style={{ left: cropStyle.left, top: cropStyle.top, transform: "translate(-50%, -50%)" }} />
+            <div className="absolute size-4 border-2 border-amber bg-ink rounded-sm" style={{ left: `calc(${cropStyle.left} + ${cropStyle.width})`, top: cropStyle.top, transform: "translate(-50%, -50%)" }} />
+            <div className="absolute size-4 border-2 border-amber bg-ink rounded-sm" style={{ left: cropStyle.left, top: `calc(${cropStyle.top} + ${cropStyle.height})`, transform: "translate(-50%, -50%)" }} />
+            <div className="absolute size-4 border-2 border-amber bg-ink rounded-sm" style={{ left: `calc(${cropStyle.left} + ${cropStyle.width})`, top: `calc(${cropStyle.top} + ${cropStyle.height})`, transform: "translate(-50%, -50%)" }} />
+          </div>
+        </div>
       </div>
 
-      {/* Footer */}
       <div className="border-t border-line px-4 py-3">
         <p className="mb-2 text-center text-xs text-mute">
-          Zeichne ein Rechteck um das Info-Feld des Reiseführers
+          Zeichne mit dem Finger ein Rechteck um das Info-Feld
         </p>
-        <button
-          className="btn btn-amber w-full !py-3"
-          onClick={applyCrop}
-          disabled={!hasCrop}
-        >
+        <button className="btn btn-amber w-full !py-3" onClick={applyCrop}>
           <Check className="size-4.5" strokeWidth={2.6} />
-          {hasCrop ? "Zuschnitt anwenden & OCR starten" : "Bild komplett senden"}
+          Zuschnitt anwenden & OCR starten
         </button>
       </div>
     </div>
