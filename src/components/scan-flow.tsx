@@ -30,6 +30,7 @@ import {
 } from "@/components/point-form";
 import { CoordChips, googleMapsUrl } from "@/components/coord-chips";
 import { Field, SectionTitle, toast, vibrate } from "@/components/ui";
+import { CropEditor } from "@/components/crop-editor";
 
 const LeafletMap = dynamic(() => import("@/components/leaflet-map"), {
   ssr: false,
@@ -90,6 +91,7 @@ export default function ScanFlow() {
   const [savedPointId, setSavedPointId] = useState<string | null>(null);
   const [pasteText, setPasteText] = useState("");
   const [detectedColor, setDetectedColor] = useState<string | null>(null);
+  const [cropImage, setCropImage] = useState<{ url: string; file: File } | null>(null);
 
   // Warteschlange für mehrere Fotos
   const [queue, setQueue] = useState<File[]>([]);
@@ -524,7 +526,14 @@ export default function ScanFlow() {
             onChange={(e) => {
               const files = e.target.files;
               if (files && files.length > 0) {
-                handleMultipleFiles(Array.from(files));
+                // Bei mehreren Bildern: Direct OCR (kein Crop)
+                if (files.length > 1) {
+                  handleMultipleFiles(Array.from(files));
+                } else {
+                  // Einzelbild: Crop-Editor anzeigen
+                  const file = files[0];
+                  setCropImage({ url: URL.createObjectURL(file), file });
+                }
               }
               e.target.value = "";
             }}
@@ -537,7 +546,7 @@ export default function ScanFlow() {
             className="hidden"
             onChange={(e) => {
               const f = e.target.files?.[0];
-              if (f) runOcr(f);
+              if (f) setCropImage({ url: URL.createObjectURL(f), file: f });
               e.target.value = "";
             }}
           />
@@ -903,6 +912,18 @@ export default function ScanFlow() {
         >
           <X className="size-5" />
         </button>
+      )}
+
+      {/* Zuschnitt-Editor */}
+      {cropImage && (
+        <CropEditor
+          imageUrl={cropImage.url}
+          onCrop={(croppedFile) => {
+            setCropImage(null);
+            handleMultipleFiles([croppedFile]);
+          }}
+          onCancel={() => setCropImage(null)}
+        />
       )}
     </div>
   );
