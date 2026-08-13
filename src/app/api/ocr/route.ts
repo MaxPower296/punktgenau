@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { createWorker } from "tesseract.js";
 import sharp from "sharp";
 import exifr from "exifr";
 import { findCoordinates } from "@/lib/coordinates";
@@ -8,24 +9,14 @@ export const runtime = "nodejs";
 export const maxDuration = 120;
 export const dynamic = "force-dynamic";
 
-/**
- * OCR über OCR.space Free API (schneller und zuverlässiger als Tesseract.js auf Vercel)
- */
-async function ocrWithOcrSpace(imageBuffer: Buffer): Promise<string> {
-  const base64 = imageBuffer.toString("base64");
-  const res = await fetch("https://api.ocr.space/parse/image", {
-    method: "POST",
-    headers: {
-      apikey: "K85589944388957", // Free API Key von OCR.space
-      "Content-Type": "application/x-www-form-urlencoded",
-    },
-    body: `base64Image=data:image/png;base64,${base64}&language=deu&isOverlayRequired=false&OCREngine=2`,
-  });
-  const data = await res.json();
-  if (data.ParsedResults && data.ParsedResults[0]) {
-    return data.ParsedResults[0].ParsedText || "";
+// Tesseract Worker (wird wiederverwendet)
+let workerPromise: ReturnType<typeof createWorker> | null = null;
+
+async function getWorker() {
+  if (!workerPromise) {
+    workerPromise = createWorker("eng", 1);
   }
-  return "";
+  return workerPromise;
 }
 
 const KEYWORDS = [
@@ -73,12 +64,12 @@ export async function POST(req: NextRequest) {
     /* kein EXIF-GPS */
   }
 
-  // Vorverarbeitung: EXIF-Drehung, max. 800 px für Speed
+  // Vorverarbeitung: EXIF-Drehung, max. 600 px für Speed
   let base: Buffer;
   try {
     base = await sharp(input)
       .rotate()
-      .resize({ width: 800, withoutEnlargement: true })
+      .resize({ width: 600, withoutEnlargement: true })
       .greyscale()
       .normalize({ lower: 2, upper: 98 })
       .png()
@@ -95,15 +86,16 @@ export async function POST(req: NextRequest) {
   const recognizeAt = async (angle: number): Promise<Attempt> => {
     const img =
       angle === 0 ? base : await sharp(base).rotate(angle).toBuffer();
-    const text = await ocrWithOcrSpace(img);
+    const worker = await getWorker();
+    const { data } = await worker.recognize(img);
+    const text = data.text ?? "";
     const lower = text.toLowerCase();
     const keywordHits = KEYWORDS.reduce(
       (n, k) => n + (lower.includes(k) ? 1 : 0),
       0
     );
     const hasGps = findCoordinates(text).length > 0;
-    // OCR.space gibt keine Konfidenz zurück, schätzen basierend auf Inhalt
-    const confidence = hasGps ? 90 : keywordHits > 0 ? 60 : 40;
+    const confidence = data.confidence ?? 0;
     const score = confidence + (hasGps ? 70 : 0) + keywordHits * 5;
     return { angle, text, confidence, hasGps, keywordHits, score };
   };
