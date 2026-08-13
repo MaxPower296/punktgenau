@@ -138,6 +138,51 @@ export default function ScanFlow() {
     };
   }, []);
 
+  // Browser-Fallback OCR wenn Vercel Server fehlschlägt (tesseract.js im Browser)
+  const runClientOcrFallback = async (file: File, index: number, currentQueue: File[]): Promise<boolean> => {
+    try {
+      setStageIdx(2);
+      toast("Browser-OCR lädt Sprachdaten (einmalig ~8MB)…");
+      const { createWorker } = await import("tesseract.js");
+      const worker: any = await createWorker("deu", 1, {
+        logger: () => {},
+      });
+      const { data } = await worker.recognize(file);
+      await worker.terminate();
+      const text: string = data.text || "";
+      // Nutze lokalen parse-API statt doppelter Logik
+      const res = await fetch("/api/parse", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text }) });
+      const parsedData = await res.json();
+      const parsed: ParsedGuide = parsedData.parsed;
+      setRotation(0);
+      setConfidence(Math.round(data.confidence || 0));
+      setOcrText(text);
+      setParsed(parsed);
+      const base64: string = await new Promise((resolve) => {
+        const r = new FileReader();
+        r.onload = () => resolve(r.result as string);
+        r.onerror = () => resolve("");
+        r.readAsDataURL(file);
+      });
+      const baseDraft = draftFromParsed(parsed);
+      baseDraft.imageUrl = base64.slice(0, 500000);
+      setDraft(baseDraft);
+      if (!parsed.lat) {
+        vibrate([100, 80, 100]);
+        toast(`Browser-OCR: Keine Koordinaten erkannt – bitte Zuschnitt nutzen`, "err");
+      } else {
+        vibrate(60);
+        toast(`Browser-OCR: Bild ${index + 1} von ${currentQueue.length} analysiert`, "ok");
+      }
+      setStep("review");
+      return true;
+    } catch (e: any) {
+      console.error("[client ocr fallback failed]", e);
+      toast("Browser-OCR fehlgeschlagen: " + (e?.message || e), "err");
+      return false;
+    }
+  };
+
   // Client-seitig vor dem Upload verkleinern: vermeidet Vercel 4.5MB Limit & 3x schneller
   const compressForUpload = async (file: File): Promise<File> => {
     if (file.size < 900 * 1024) return file;
@@ -181,14 +226,20 @@ export default function ScanFlow() {
       const uploadFile = await compressForUpload(file);
       const form = new FormData();
       form.append("file", uploadFile);
-      const res = await fetch("/api/ocr", { method: "POST", body: form });
-      const data: OcrResponse = await res.json();
-      if (!res.ok || data.error) {
-        setError(data.error ?? "Analyse fehlgeschlagen");
-        setStep("capture");
-        toast(data.error ?? `Analyse von Bild ${index + 1} fehlgeschlagen`, "err");
-        return;
-      }
+        const res = await fetch("/api/ocr", { method: "POST", body: form });
+        const data: any = await res.json().catch(()=> ({}));
+        if (!res.ok || data?.error) {
+          // Vercel Server-OCR ausgefallen (Cannot find module / Memory) -> Browser-Fallback versuchen
+          if (data?.fallback || String(data?.details || data?.error || "").includes("Cannot find module")) {
+            toast("Server-OCR ausgefallen - versuche OCR direkt im Browser…", "err");
+            const ok = await runClientOcrFallback(file, index, currentQueue);
+            if (ok) return;
+          }
+          setError(data?.error ?? "Analyse fehlgeschlagen");
+          setStep("capture");
+          toast(data?.error ?? `Analyse von Bild ${index + 1} fehlgeschlagen`, "err");
+          return;
+        }
       setRotation(data.rotation);
       setConfidence(data.confidence);
       setOcrText(data.ocrText);
