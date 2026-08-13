@@ -1,26 +1,31 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createWorker } from "tesseract.js";
 import sharp from "sharp";
 import exifr from "exifr";
 import { findCoordinates } from "@/lib/coordinates";
 import { parseGuideText } from "@/lib/guide-parse";
 
 export const runtime = "nodejs";
-export const maxDuration = 300;
+export const maxDuration = 120;
 export const dynamic = "force-dynamic";
 
-// Worker wird prozessweit wiederverwendet (Sprachdaten-Cache)
-let workerPromise: Promise<Worker> | null = null;
-type Worker = Awaited<ReturnType<typeof createWorker>>;
-
-function getWorker(): Promise<Worker> {
-  if (!workerPromise) {
-    workerPromise = createWorker("deu", 1, {
-      cachePath: ".tessdata-cache",
-      errorHandler: (e) => console.error("[tesseract]", e),
-    });
+/**
+ * OCR über OCR.space Free API (schneller und zuverlässiger als Tesseract.js auf Vercel)
+ */
+async function ocrWithOcrSpace(imageBuffer: Buffer): Promise<string> {
+  const base64 = imageBuffer.toString("base64");
+  const res = await fetch("https://api.ocr.space/parse/image", {
+    method: "POST",
+    headers: {
+      apikey: "K85589944388957", // Free API Key von OCR.space
+      "Content-Type": "application/x-www-form-urlencoded",
+    },
+    body: `base64Image=data:image/png;base64,${base64}&language=deu&isOverlayRequired=false&OCREngine=2`,
+  });
+  const data = await res.json();
+  if (data.ParsedResults && data.ParsedResults[0]) {
+    return data.ParsedResults[0].ParsedText || "";
   }
-  return workerPromise;
+  return "";
 }
 
 const KEYWORDS = [
@@ -68,15 +73,14 @@ export async function POST(req: NextRequest) {
     /* kein EXIF-GPS */
   }
 
-  // Vorverarbeitung: EXIF-Drehung, max. 2400 px, Graustufen, Kontrast
+  // Vorverarbeitung: EXIF-Drehung, max. 800 px für Speed
   let base: Buffer;
   try {
     base = await sharp(input)
       .rotate()
-      .resize({ width: 2400, withoutEnlargement: true })
+      .resize({ width: 800, withoutEnlargement: true })
       .greyscale()
       .normalize({ lower: 2, upper: 98 })
-      .sharpen()
       .png()
       .toBuffer();
   } catch {
@@ -86,43 +90,35 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const worker = await getWorker();
   const attempts: Attempt[] = [];
 
   const recognizeAt = async (angle: number): Promise<Attempt> => {
     const img =
       angle === 0 ? base : await sharp(base).rotate(angle).toBuffer();
-    const { data } = await worker.recognize(img);
-    const text = data.text ?? "";
+    const text = await ocrWithOcrSpace(img);
     const lower = text.toLowerCase();
     const keywordHits = KEYWORDS.reduce(
       (n, k) => n + (lower.includes(k) ? 1 : 0),
       0
     );
     const hasGps = findCoordinates(text).length > 0;
-    const confidence = data.confidence ?? 0;
+    // OCR.space gibt keine Konfidenz zurück, schätzen basierend auf Inhalt
+    const confidence = hasGps ? 90 : keywordHits > 0 ? 60 : 40;
     const score = confidence + (hasGps ? 70 : 0) + keywordHits * 5;
     return { angle, text, confidence, hasGps, keywordHits, score };
   };
 
   try {
-    // Hochgradig beschleunigtes adaptives OCR: 0°-Fast-Path
+    // Schneller Fast-Path: nur 0° testen
     const first = await recognizeAt(0);
     attempts.push(first);
     let best = first;
 
-    // Wenn bei 0° bereits Koordinaten und eine plausible Konfidenz vorliegen,
-    // überspringen wir die rechenintensiven Rotationsscans komplett!
-    const hasGoodFirstScan = first.hasGps && first.confidence >= 40;
-
-    if (!hasGoodFirstScan) {
-      const angles = [180, 90, 270];
-      for (const angle of angles) {
-        if (best.hasGps && best.confidence >= 55) break;
-        const a = await recognizeAt(angle);
-        attempts.push(a);
-        if (a.score > best.score) best = a;
-      }
+    // Nur bei keiner GPS-Erkennung 180° testen
+    if (!first.hasGps) {
+      const a = await recognizeAt(180);
+      attempts.push(a);
+      if (a.score > best.score) best = a;
     }
   } catch (e) {
     console.error("[ocr]", e);
