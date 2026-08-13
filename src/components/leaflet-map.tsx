@@ -32,13 +32,16 @@ interface Props {
   selectedId?: string | null;
   onSelect?: (id: string) => void;
   onMapClick?: (lat: number, lng: number) => void;
+  onDragEnd?: (id: string, lat: number, lng: number) => void;
   addMode?: boolean;
+  draggable?: boolean;
   userPos?: { lat: number; lng: number } | null;
   onUserPos?: (pos: { lat: number; lng: number }) => void;
   fitKey?: string;
   interactive?: boolean;
   color?: string;
   className?: string;
+  poiMarkers?: { lat: number; lng: number; label: string; type: string }[];
 }
 
 const OSM = "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png";
@@ -56,8 +59,11 @@ export default function LeafletMap({
   selectedId,
   onSelect,
   onMapClick,
+  onDragEnd,
   addMode,
+  draggable,
   userPos,
+  poiMarkers,
   onUserPos,
   fitKey,
   interactive = true,
@@ -70,8 +76,8 @@ export default function LeafletMap({
   const userMarkerRef = useRef<L.Marker | null>(null);
   const layersRef = useRef<{ osm: L.TileLayer; sat: L.TileLayer } | null>(null);
   const [sat, setSat] = useState(false);
-  const callbacks = useRef({ onSelect, onMapClick });
-  callbacks.current = { onSelect, onMapClick };
+  const callbacks = useRef({ onSelect, onMapClick, onDragEnd });
+  (callbacks as any).current = { onSelect, onMapClick, onDragEnd };
 
   // Map einmalig initialisieren
   useEffect(() => {
@@ -90,7 +96,13 @@ export default function LeafletMap({
       callbacks.current.onMapClick?.(e.latlng.lat, e.latlng.lng);
     });
     mapRef.current = map;
+    // Fix für abgeschnittene Karte: Leaflet muss nach dem ersten Render seine Größe neu berechnen
+    setTimeout(() => map.invalidateSize(), 120);
+    setTimeout(() => map.invalidateSize(), 400);
+    const onResize = () => map.invalidateSize();
+    window.addEventListener("resize", onResize);
     return () => {
+      window.removeEventListener("resize", onResize);
       map.remove();
       mapRef.current = null;
       markersRef.current.clear();
@@ -132,12 +144,36 @@ export default function LeafletMap({
       const marker = existing.get(p.id);
       if (marker) {
         marker.setLatLng([p.lat, p.lng]).setIcon(icon);
+        if (draggable) { try { (marker as any).dragging?.enable(); } catch {} }
       } else {
-        const m = L.marker([p.lat, p.lng], { icon, keyboard: false });
+        const m = L.marker([p.lat, p.lng], { icon, keyboard: false, draggable: !!draggable });
         m.on("click", () => callbacks.current.onSelect?.(p.id));
+        if (draggable) {
+          m.on("dragend", () => {
+            const ll = m.getLatLng();
+            // @ts-ignore
+            const cb = (callbacks as any).current?.onDragEnd;
+            if (cb) cb(p.id, ll.lat, ll.lng);
+          });
+        }
         m.addTo(map);
         existing.set(p.id, m);
       }
+    }
+    // POI markers
+    const poiLayer = (map as any)._poiLayer as L.LayerGroup | undefined;
+    if (poiMarkers && poiMarkers.length) {
+      if (poiLayer) map.removeLayer(poiLayer);
+      const group = L.layerGroup();
+      poiMarkers.forEach(pm=>{
+        const icon = L.divIcon({ html: `<div style="background:#fff;border:1px solid #26301f;border-radius:999px;padding:2px 5px;font-size:9px">${pm.label.slice(0,14)}</div>`, className:"", iconAnchor:[20,10]});
+        L.marker([pm.lat,pm.lng],{icon}).addTo(group);
+      });
+      group.addTo(map);
+      (map as any)._poiLayer = group;
+    } else if (poiLayer) {
+      map.removeLayer(poiLayer);
+      (map as any)._poiLayer = null;
     }
     for (const [id, marker] of existing) {
       if (!alive.has(id)) {
@@ -152,7 +188,7 @@ export default function LeafletMap({
         map.panTo(ll, { animate: true });
       }
     }
-  }, [points, selectedId, color]);
+  }, [points, selectedId, color, draggable, poiMarkers]);
 
   // Fitting
   const lastFit = useRef<string>("");

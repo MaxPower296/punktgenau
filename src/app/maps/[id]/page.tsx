@@ -9,11 +9,6 @@ import {
   ChevronRight,
   Crosshair,
   Download,
-  Fuel,
-  ShoppingCart,
-  Droplets,
-  Accessibility,
-  UtensilsCrossed,
   Mountain,
   Navigation,
   Pencil,
@@ -21,23 +16,27 @@ import {
   ScanLine,
   Search,
   Star,
-  Share2,
   Trash2,
   X,
   Check,
   MapPin,
   MousePointerClick,
-  Calendar,
-  Camera,
+  Filter,
   Route,
+  Layers,
+  Share2,
+  Calendar,
+  Thermometer,
+  Info,
+  QrCode,
+  Upload,
+  EyeOff,
 } from "lucide-react";
 import type { MapWithCount, PointDto } from "@/lib/types";
 import { PointForm, EMPTY_DRAFT, draftLatLng, parseDraftNumber, type PointDraft } from "@/components/point-form";
 import { CoordChips, googleMapsUrl, toDMSClient } from "@/components/coord-chips";
 import { SectionTitle, toast } from "@/components/ui";
-import { WeatherGeocode } from "@/components/weather-geocode";
-import { NavChooser } from "@/components/nav-chooser";
-import { BackupImport } from "@/components/backup-import";
+import { ReverseGeocode, WeatherWidget, PoiPanel, TourPlanner, SharePanel, ElevationProfile, ImageGallery, CalendarButton } from "@/components/feature-panels";
 
 const LeafletMap = dynamic(() => import("@/components/leaflet-map"), {
   ssr: false,
@@ -66,6 +65,8 @@ function pointToDraft(p: PointDto): PointDraft {
     phone: p.phone ?? "",
     notes: p.notes ?? "",
     rawGps: p.rawGps ?? "",
+    visitedAt: p.visitedAt ? p.visitedAt.slice(0,10) : "",
+    imageUrl: p.imageUrl ?? "",
   };
 }
 
@@ -82,6 +83,14 @@ function haversine(lat1: number, lng1: number, lat2: number, lng2: number): numb
   return 2 * R * Math.asin(Math.sqrt(a));
 }
 
+const NAV_OPTIONS = [
+  { label: "Google Maps", url: (lat:number,lng:number)=>`https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}` },
+  { label: "Apple Karten", url: (lat:number,lng:number)=>`https://maps.apple.com/?daddr=${lat},${lng}` },
+  { label: "OsmAnd", url: (lat:number,lng:number)=>`https://osmand.net/map/?pin=${lat},${lng}` },
+  { label: "Organic Maps", url: (lat:number,lng:number)=>`https://omaps.app/${lat},${lng}` },
+  { label: "Waze", url: (lat:number,lng:number)=>`https://waze.com/ul?ll=${lat},${lng}&navigate=yes` },
+];
+
 export default function MapDetailPage() {
   const params = useParams<{ id: string }>();
   const search = useSearchParams();
@@ -94,12 +103,21 @@ export default function MapDetailPage() {
   const [draft, setDraft] = useState<PointDraft>(EMPTY_DRAFT);
   const [saving, setSaving] = useState(false);
   const [addMode, setAddMode] = useState(false);
+  const [draggable, setDraggable] = useState(false);
   const [userPos, setUserPos] = useState<{ lat: number; lng: number } | null>(null);
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<"alle" | "favoriten" | "besucht" | "offen">("alle");
+  const [categoryFilter, setCategoryFilter] = useState<string>("alle");
+  const [hideVisited, setHideVisited] = useState(false);
+  const [sortByDistance, setSortByDistance] = useState(false);
+  const [equipmentFilter, setEquipmentFilter] = useState<string>("");
   const [renaming, setRenaming] = useState(false);
   const [mapName, setMapName] = useState("");
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [showPoi, setShowPoi] = useState(false);
+  const [poiMarkers, setPoiMarkers] = useState<any[]>([]);
+  const [showTour, setShowTour] = useState(false);
+  const [showElevation, setShowElevation] = useState(false);
 
   const load = useCallback(async () => {
     const res = await fetch(`/api/maps/${id}`);
@@ -120,6 +138,11 @@ export default function MapDetailPage() {
   const mapColor = data?.map.color ?? "#E9A13B";
   const selected = points.find((p) => p.id === selectedId) ?? null;
 
+  const categories = useMemo(()=> {
+    const s = new Set(points.map(p=>p.category).filter(Boolean) as string[]);
+    return Array.from(s);
+  },[points]);
+
   const filtered = useMemo(() => {
     let list = points;
     const q = query.trim().toLowerCase();
@@ -131,11 +154,17 @@ export default function MapDetailPage() {
           (p.refNumber ?? "").includes(q)
       );
     }
+    if (categoryFilter !== "alle") list = list.filter(p=> p.category===categoryFilter);
+    if (equipmentFilter) list = list.filter(p=> (p.equipment||"").toLowerCase().includes(equipmentFilter.toLowerCase()));
     if (filter === "favoriten") list = list.filter((p) => p.favorite);
     if (filter === "besucht") list = list.filter((p) => p.visited);
     if (filter === "offen") list = list.filter((p) => !p.visited);
+    if (hideVisited) list = list.filter(p=>!p.visited);
+    if (sortByDistance && userPos) {
+      list = [...list].sort((a,b)=> haversine(userPos.lat,userPos.lng,a.lat,a.lng) - haversine(userPos.lat,userPos.lng,b.lat,b.lng));
+    }
     return list;
-  }, [points, query, filter]);
+  }, [points, query, filter, categoryFilter, hideVisited, sortByDistance, userPos, equipmentFilter]);
 
   const select = (pid: string) => {
     setSelectedId(pid);
@@ -176,6 +205,9 @@ export default function MapDetailPage() {
           phone: draft.phone.trim(),
           notes: draft.notes.trim(),
           rawGps: draft.rawGps.trim(),
+          imageUrl: draft.imageUrl.trim(),
+          visitedAt: draft.visitedAt ? new Date(draft.visitedAt).toISOString() : null,
+          visited: !!draft.visitedAt,
         }),
       });
       if (res.ok) {
@@ -191,15 +223,12 @@ export default function MapDetailPage() {
   };
 
   const toggleFlag = async (p: PointDto, key: "favorite" | "visited") => {
-    const body: Record<string, unknown> = { [key]: !p[key] };
-    // Besuchs-Datum automatisch setzen beim Haken
-    if (key === "visited" && !p.visited) {
-      body.visitedAt = new Date().toISOString();
-    }
+    const payload:any = { [key]: !p[key] };
+    if (key==="visited") payload.visitedAt = !p.visited ? new Date().toISOString() : null;
     await fetch(`/api/points/${p.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
+      body: JSON.stringify(payload),
     });
     await load();
   };
@@ -237,6 +266,11 @@ export default function MapDetailPage() {
       setEditing(true);
     }
   };
+  const onDragEnd = async (pid:string, lat:number,lng:number)=>{
+    await fetch(`/api/points/${pid}`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({lat,lng})});
+    toast("Position verschoben");
+    load();
+  };
 
   const renameMap = async () => {
     if (!mapName.trim() || !data) return;
@@ -273,9 +307,9 @@ export default function MapDetailPage() {
   }
 
   return (
-    <div className="flex flex-1 flex-col lg:h-[calc(100dvh-64px)] lg:flex-row lg:overflow-hidden">
+    <div className="flex min-h-0 flex-1 flex-col lg:h-[calc(100dvh-64px)] lg:flex-row lg:overflow-hidden">
       {/* ------- Seitenleiste ------- */}
-      <aside className="order-2 flex w-full flex-col border-r border-line bg-ink-2 lg:order-1 lg:w-[410px] lg:min-w-[410px] lg:overflow-y-auto">
+      <aside className="order-2 flex max-h-[50vh] w-full flex-col overflow-y-auto border-r border-line bg-ink-2 lg:order-1 lg:max-h-none lg:w-[430px] lg:min-w-[430px] lg:overflow-y-auto">
         <div className="border-b border-line p-4">
           <Link
             href="/maps"
@@ -331,19 +365,8 @@ export default function MapDetailPage() {
               <MousePointerClick className="size-3.5" />
               {addMode ? "Auf Karte klicken …" : "Per Klick setzen"}
             </button>
+            <button onClick={()=>setDraggable(!draggable)} className={`btn !px-3 !py-1.5 !text-xs ${draggable?"btn-amber":"btn-ghost"}`} title="Pin verschiebbar"><MoveIcon />{draggable?"Verschieben an":"Verschieben"}</button>
             <div className="ml-auto flex items-center gap-1">
-              <BackupImport mapId={id} />
-              <button
-                className="btn btn-ghost !px-2.5 !py-1.5 !text-xs"
-                onClick={() => {
-                  const url = `${window.location.origin}/maps/${id}`;
-                  navigator.clipboard.writeText(url);
-                  toast("Link zur Karte kopiert");
-                }}
-                title="Link kopieren"
-              >
-                <Share2 className="size-3.5" />
-              </button>
               {(["kml", "csv", "geojson", "gpx"] as const).map((f) => (
                 <a
                   key={f}
@@ -356,6 +379,27 @@ export default function MapDetailPage() {
               ))}
             </div>
           </div>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <button onClick={async()=>{
+              const r=await fetch(`/api/maps/${id}/share`,{method:"POST"});
+              const d=await r.json();
+              const url = `${location.origin}/shared/${d.token}`;
+              await navigator.clipboard.writeText(url);
+              toast("Share-Link kopiert: "+url);
+            }} className="btn btn-ghost !py-1 !text-xs"><Share2 className="size-3"/> Karte teilen</button>
+            <button onClick={()=> setShowTour(!showTour)} className="btn btn-ghost !py-1 !text-xs"><Route className="size-3"/> Tour</button>
+            <button onClick={()=> setShowPoi(!showPoi)} className="btn btn-ghost !py-1 !text-xs"><Search className="size-3"/> POIs</button>
+            <button onClick={()=> setShowElevation(!showElevation)} className="btn btn-ghost !py-1 !text-xs"><Mountain className="size-3"/> Höhe</button>
+            <label className="btn btn-ghost !py-1 !text-xs cursor-pointer"><Upload className="size-3"/> GPX Import<input type="file" accept=".gpx,.kml" className="hidden" onChange={async(e)=>{
+              const f=e.target.files?.[0]; if(!f) return;
+              const fd=new FormData(); fd.append("file",f); fd.append("mapId",id);
+              const r=await fetch("/api/import-gpx",{method:"POST",body:fd}); const d=await r.json();
+              if(r.ok){ toast(`${d.imported} Punkte importiert`); load(); } else toast("Import fehlgeschlagen","err");
+            }}/></label>
+          </div>
+          {showTour && <div className="mt-3"><TourPlanner points={filtered.map(p=>({id:p.id,name:p.name,lat:p.lat,lng:p.lng}))} /></div>}
+          {showElevation && <div className="mt-3"><ElevationProfile points={filtered.map(p=>({lat:p.lat,lng:p.lng}))} /></div>}
+          {showPoi && selected && <div className="mt-3 border-t border-line pt-3"><p className="text-xs font-semibold mb-2">POIs um {selected.name}</p><PoiPanel lat={selected.lat} lng={selected.lng} onSelect={(la,lo,label)=>{ setPoiMarkers([{lat:la,lng:lo,label,type:"poi"}]); toast(label+" auf Karte markiert"); }}/></div>}
         </div>
 
         {/* Suche + Filter */}
@@ -369,7 +413,7 @@ export default function MapDetailPage() {
               onChange={(e) => setQuery(e.target.value)}
             />
           </div>
-          <div className="flex flex-wrap gap-1.5">
+          <div className="flex gap-1.5 flex-wrap">
             {(["alle", "favoriten", "offen", "besucht"] as const).map((f) => (
               <button
                 key={f}
@@ -382,29 +426,19 @@ export default function MapDetailPage() {
               </button>
             ))}
           </div>
-          {/* Kategorie-Filter */}
-          <div className="flex flex-wrap gap-1.5">
-            {[
-              { key: "Wander", color: "#22c55e", label: "🥾 Wander" },
-              { key: "Camping", color: "#a3e635", label: "⛺ Camping" },
-              { key: "Stell", color: "#fbbf24", label: "🅿️ Stell" },
-              { key: "Picknick", color: "#c084fc", label: "🧺 Picknick" },
-              { key: "Bad", color: "#38bdf8", label: "🏖️ Bad" },
-            ].map((c) => {
-              const count = points.filter(
-                (p) => p.category?.toLowerCase().includes(c.key.toLowerCase())
-              ).length;
-              return (
-                <button
-                  key={c.key}
-                  className="flex items-center gap-1 rounded-lg border border-line px-2 py-1 text-[10px] transition-colors hover:border-line-2"
-                  onClick={() => setQuery(c.key)}
-                >
-                  <span className="size-2 rounded-full" style={{ background: c.color }} />
-                  {c.label} ({count})
-                </button>
-              );
-            })}
+          <div className="flex gap-1.5 flex-wrap">
+            <select value={categoryFilter} onChange={e=>setCategoryFilter(e.target.value)} className="field !py-1 text-xs flex-1">
+              <option value="alle">Alle Kategorien</option>
+              {categories.map(c=> <option key={c} value={c}>{c}</option>)}
+            </select>
+            <select value={equipmentFilter} onChange={e=>setEquipmentFilter(e.target.value)} className="field !py-1 text-xs flex-1">
+              <option value="">Alle Ausstattung</option>
+              <option value="V/E">V/E</option><option value="Strom">Strom</option><option value="WLAN">WLAN</option><option value="Wasser">Wasser</option>
+            </select>
+          </div>
+          <div className="flex gap-2">
+            <button onClick={()=> setSortByDistance(!sortByDistance)} className={`btn !py-1 !text-xs ${sortByDistance?"btn-amber":"btn-ghost"}`}><Navigation className="size-3"/>{sortByDistance?"Entfernung an":"Entfernung sortieren"}</button>
+            <button onClick={()=> setHideVisited(!hideVisited)} className={`btn !py-1 !text-xs ${hideVisited?"btn-amber":"btn-ghost"}`}><EyeOff className="size-3"/>{hideVisited?"Alle zeigen":"Unbesuchte nur"}</button>
           </div>
         </div>
 
@@ -445,6 +479,7 @@ export default function MapDetailPage() {
                   {p.category && (
                     <span className="mt-0.5 block truncate text-[11px] text-mute">{p.category}</span>
                   )}
+                  {p.visitedAt && <span className="text-[10px] text-sage">Besucht: {new Date(p.visitedAt).toLocaleDateString("de")}</span>}
                 </span>
                 {userPos && (
                   <span className="chip mt-1 shrink-0">{distLabel(haversine(userPos.lat, userPos.lng, p.lat, p.lng))}</span>
@@ -457,7 +492,7 @@ export default function MapDetailPage() {
       </aside>
 
       {/* ------- Karte ------- */}
-      <section className="relative order-1 h-[52dvh] flex-1 lg:order-2 lg:h-full lg:min-h-0">
+      <section className="relative order-1 h-[42vh] max-h-[58vh] min-h-[320px] w-full flex-none lg:order-2 lg:h-auto lg:max-h-none lg:min-h-0 lg:flex-1">
         <LeafletMap
           points={filtered.map((p) => ({
             id: p.id,
@@ -472,11 +507,14 @@ export default function MapDetailPage() {
           selectedId={selectedId}
           onSelect={select}
           onMapClick={onMapClick}
+          onDragEnd={onDragEnd}
           addMode={addMode}
+          draggable={draggable}
           userPos={userPos}
           onUserPos={setUserPos}
           fitKey={`${id}-${points.length}`}
           color={mapColor}
+          poiMarkers={poiMarkers}
           className="absolute inset-0"
         />
 
@@ -523,6 +561,7 @@ export default function MapDetailPage() {
                         )}
                         {selected.name}
                       </h2>
+                      <div className="mt-1"><ReverseGeocode lat={selected.lat} lng={selected.lng} /></div>
                     </div>
                     <div className="flex shrink-0 items-center gap-1">
                       <button
@@ -562,15 +601,23 @@ export default function MapDetailPage() {
                       lng={selected.lng}
                       altitude={selected.altitude}
                     />
+                    <div className="flex gap-2">
+                      {NAV_OPTIONS.map(opt=>(
+                        <a key={opt.label} href={opt.url(selected.lat, selected.lng)} target="_blank" className="btn btn-ghost !py-1 !text-[10px] flex-1">{opt.label}</a>
+                      ))}
+                    </div>
 
                     <div className="flex flex-wrap gap-1.5">
                       {selected.maxWomos && (
                         <span className="chip">max. WOMOs: {selected.maxWomos}</span>
                       )}
+                      {selected.visitedAt && <span className="chip text-sage">Besucht: {new Date(selected.visitedAt).toLocaleDateString("de")}</span>}
                       {selected.favorite && <span className="chip text-amber">Favorit</span>}
                       {selected.visited && <span className="chip text-sage">Besucht</span>}
                       {selected.source && <span className="chip">Quelle: {selected.source}</span>}
                     </div>
+
+                    <WeatherWidget lat={selected.lat} lng={selected.lng} />
 
                     {selected.equipment && (
                       <InfoRow label="Ausstattung" value={selected.equipment} />
@@ -595,48 +642,23 @@ export default function MapDetailPage() {
                         icon={<Mountain className="size-3.5" />}
                       />
                     )}
-
-                    {/* Besuchs-Datum */}
-                    {selected.visitedAt && (
-                      <InfoRow
-                        label="Besucht am"
-                        value={new Date(selected.visitedAt).toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit", year: "numeric" })}
-                        icon={<Calendar className="size-3.5" />}
-                      />
-                    )}
-
-                    {/* Adresse / Reverse-Geocoding */}
-                    {selected.address && (
-                      <InfoRow label="Adresse" value={selected.address} icon={<MapPin className="size-3.5" />} />
-                    )}
-                  </div>
-
-                  {/* Wetter + Reverse-Geocoding (live geladen) */}
-                  <div className="mt-3">
-                    <WeatherGeocode lat={selected.lat} lng={selected.lng} />
-                  </div>
-
-                  {/* Navigation wählen */}
-                  <div className="mt-3 border-t border-line pt-3">
-                    <p className="mb-2 font-mono text-[9px] uppercase tracking-[0.2em] text-dim">
-                      Navigieren mit
-                    </p>
-                    <NavChooser
-                      lat={selected.lat}
-                      lng={selected.lng}
-                      label={selected.name}
-                    />
+                    <ImageGallery pointId={selected.id} />
+                    <div className="flex gap-2">
+                      <SharePanel point={{name:selected.name, lat:selected.lat, lng:selected.lng, category:selected.category}} />
+                      <CalendarButton point={{name:selected.name, lat:selected.lat, lng:selected.lng, visitedAt:selected.visitedAt}} />
+                    </div>
                   </div>
 
                   <div className="mt-4 flex gap-2 border-t border-line pt-4">
-                    {/* Besucht-Toggle mit Datum */}
-                    <button
-                      className={`btn flex-1 ${selected.visited ? "!bg-sage/20 !text-sage !border-sage/30" : "btn-ghost"}`}
-                      onClick={() => toggleFlag(selected, "visited")}
+                    <a
+                      href={googleMapsUrl(selected.lat, selected.lng)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="btn btn-amber flex-1"
                     >
-                      <Check className="size-4" />
-                      {selected.visited ? "Besucht ✓" : "Als besucht markieren"}
-                    </button>
+                      <Navigation className="size-4" />
+                      Navigieren
+                    </a>
                     {confirmDelete ? (
                       <button
                         className="btn btn-ghost !border-clay !text-clay"
@@ -660,7 +682,6 @@ export default function MapDetailPage() {
           </div>
         )}
 
-        {/* Export-Hinweis auf der Karte */}
         {!selected && points.length > 0 && (
           <div className="pointer-events-none absolute bottom-4 left-1/2 z-[500] hidden -translate-x-1/2 lg:block">
             <span className="chip !bg-ink/80">
@@ -687,6 +708,8 @@ export default function MapDetailPage() {
   );
 }
 
+function MoveIcon(){ return <span className="text-[11px]">↔</span>; }
+
 function InfoRow({
   label,
   value,
@@ -694,7 +717,7 @@ function InfoRow({
 }: {
   label: string;
   value: string;
-  icon?: ReactNode;
+  icon?: React.ReactNode;
 }) {
   return (
     <div className="rounded-lg border border-line bg-ink/40 px-3 py-2.5">

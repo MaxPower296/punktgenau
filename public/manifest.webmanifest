@@ -1,18 +1,21 @@
 {
-  "name": "Punktgenau",
+  "name": "Punktgenau – Reiseführer-GPS-Scanner",
   "short_name": "Punktgenau",
-  "description": "Reiseführer-GPS-Scanner mit OCR, Karte und Google Maps Navigation",
-  "id": "/",
-  "start_url": "/",
+  "description": "Fotografiere GPS-Daten aus Reiseführern, prüfe sie per OCR und speichere sie auf Karten.",
+  "id": "/?source=pwa",
+  "start_url": "/?source=pwa",
   "scope": "/",
   "lang": "de-DE",
   "dir": "ltr",
   "display": "standalone",
+  "display_override": ["window-controls-overlay", "standalone", "minimal-ui"],
   "orientation": "portrait",
   "theme_color": "#0b0d0a",
   "background_color": "#0b0d0a",
   "categories": ["travel", "navigation", "utilities", "maps"],
-  "prefer_related_applications": false,
+  "launch_handler": {
+    "client_mode": ["navigate-existing", "auto"]
+  },
   "icons": [
     {
       "src": "/icons/icon-192.png",

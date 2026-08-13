@@ -29,10 +29,16 @@ export interface PointDto {
   favorite: boolean;
   visited: boolean;
   visitedAt: string | null;
-  photoUrl: string | null;
-  address: string | null;
+  imageUrl: string | null;
   createdAt: string;
   updatedAt: string;
+}
+export interface PointImageDto {
+  id: string;
+  pointId: string;
+  url: string;
+  caption: string | null;
+  createdAt: string;
 }
 
 export interface CoordCandidateDto {

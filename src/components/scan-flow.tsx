@@ -28,9 +28,9 @@ import {
   parseDraftNumber,
   type PointDraft,
 } from "@/components/point-form";
+import { CropEditor } from "@/components/crop-editor";
 import { CoordChips, googleMapsUrl } from "@/components/coord-chips";
 import { Field, SectionTitle, toast, vibrate } from "@/components/ui";
-import { CropEditor } from "@/components/crop-editor";
 
 const LeafletMap = dynamic(() => import("@/components/leaflet-map"), {
   ssr: false,
@@ -91,11 +91,12 @@ export default function ScanFlow() {
   const [savedPointId, setSavedPointId] = useState<string | null>(null);
   const [pasteText, setPasteText] = useState("");
   const [detectedColor, setDetectedColor] = useState<string | null>(null);
-  const [cropImage, setCropImage] = useState<{ url: string; file: File } | null>(null);
 
   // Warteschlange für mehrere Fotos
   const [queue, setQueue] = useState<File[]>([]);
   const [queueIndex, setQueueIndex] = useState<number>(0);
+  const [cropSrc, setCropSrc] = useState<string | null>(null);
+  const [pendingFiles, setPendingFiles] = useState<File[] | null>(null);
 
   const fileRef = useRef<HTMLInputElement>(null);
   const camRef = useRef<HTMLInputElement>(null);
@@ -137,6 +138,35 @@ export default function ScanFlow() {
     };
   }, []);
 
+  // Client-seitig vor dem Upload verkleinern: vermeidet Vercel 4.5MB Limit & 3x schneller
+  const compressForUpload = async (file: File): Promise<File> => {
+    if (file.size < 900 * 1024) return file;
+    // Nur Bilder komprimieren
+    if (!file.type.startsWith("image/")) return file;
+    return new Promise<File>((resolve) => {
+      const img = new window.Image();
+      const url = URL.createObjectURL(file);
+      img.onload = () => {
+        const maxW = 1600;
+        let w = img.naturalWidth; let h = img.naturalHeight;
+        if (w > maxW) { h = Math.round(h * maxW / w); w = maxW; }
+        const canvas = document.createElement("canvas");
+        canvas.width = w; canvas.height = h;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) { URL.revokeObjectURL(url); resolve(file); return; }
+        ctx.drawImage(img, 0, 0, w, h);
+        canvas.toBlob((b) => {
+          URL.revokeObjectURL(url);
+          if (b && b.size < file.size) {
+            resolve(new File([b], file.name.replace(/\.\w+$/, "") + ".jpg", { type: "image/jpeg" }));
+          } else resolve(file);
+        }, "image/jpeg", 0.82);
+      };
+      img.onerror = () => { URL.revokeObjectURL(url); resolve(file); };
+      img.src = url;
+    });
+  };
+
   const processQueueItem = async (index: number, currentQueue: File[]) => {
     const file = currentQueue[index];
     if (!file) return;
@@ -145,10 +175,12 @@ export default function ScanFlow() {
     setDup(null);
     setStep("processing");
     setStageIdx(0);
-    setImage({ url: URL.createObjectURL(file), name: file.name });
+    const objectUrl = URL.createObjectURL(file);
+    setImage({ url: objectUrl, name: file.name });
     try {
+      const uploadFile = await compressForUpload(file);
       const form = new FormData();
-      form.append("file", file);
+      form.append("file", uploadFile);
       const res = await fetch("/api/ocr", { method: "POST", body: form });
       const data: OcrResponse = await res.json();
       if (!res.ok || data.error) {
@@ -163,7 +195,16 @@ export default function ScanFlow() {
       setPhotoGps(data.photoGps);
       setDetectedColor(data.detectedColorCategory ?? null);
       setParsed(data.parsed);
-      setDraft(draftFromParsed(data.parsed));
+      // Bild als base64 für Speicherung am Punkt merken (kleine Vorschau)
+      const base64: string = await new Promise((resolve) => {
+        const r = new FileReader();
+        r.onload = () => resolve(r.result as string);
+        r.onerror = () => resolve("");
+        r.readAsDataURL(file);
+      });
+      const baseDraft = draftFromParsed(data.parsed);
+      baseDraft.imageUrl = base64.slice(0, 500000); // limit ~500KB
+      setDraft(baseDraft);
       if (!data.parsed.lat) {
         vibrate([100, 80, 100]); // Fehler-Vibrationsmuster
         toast(`Bild ${index + 1}: Keine Koordinaten erkannt – bitte prüfen/ergänzen`, "err");
@@ -181,6 +222,30 @@ export default function ScanFlow() {
 
   const handleMultipleFiles = (files: File[]) => {
     if (files.length === 0) return;
+    if (files.length === 1) {
+      const url = URL.createObjectURL(files[0]);
+      setCropSrc(url);
+      setPendingFiles(files);
+      return;
+    }
+    setQueue(files);
+    setQueueIndex(0);
+    processQueueItem(0, files);
+  };
+
+  const confirmCrop = async (blob: Blob) => {
+    const files = pendingFiles || [];
+    const croppedFile = new File([blob], files[0].name, { type: "image/jpeg" });
+    setCropSrc(null);
+    setPendingFiles(null);
+    setQueue([croppedFile]);
+    setQueueIndex(0);
+    processQueueItem(0, [croppedFile]);
+  };
+  const skipCrop = () => {
+    const files = pendingFiles || [];
+    setCropSrc(null);
+    setPendingFiles(null);
     setQueue(files);
     setQueueIndex(0);
     processQueueItem(0, files);
@@ -284,6 +349,7 @@ export default function ScanFlow() {
           rawGps: draft.rawGps.trim(),
           rawText: ocrText.slice(0, 8000),
           source: image ? "ocr" : "manual",
+          imageUrl: draft.imageUrl || undefined,
           force,
         }),
       });
@@ -435,9 +501,9 @@ export default function ScanFlow() {
               }}
             >
               <div className="pointer-events-none absolute inset-0 opacity-[0.05] [background:radial-gradient(circle_at_50%_50%,#e9a13b_1px,transparent_1px)] [background-size:26px_26px]" />
-              <div className="stagger max-w-md">
-                <div className="mx-auto mb-6 grid size-24 place-items-center rounded-full border border-line-2 bg-panel text-amber transition-transform duration-500 group-hover:scale-105">
-                  <ScanLine className="size-10" strokeWidth={1.6} />
+              <div className="stagger flex max-w-md flex-col items-center text-center">
+                <div className="mb-6 flex size-24 items-center justify-center rounded-full border border-line-2 bg-panel text-amber transition-transform duration-500 group-hover:scale-105">
+                  <ScanLine className="size-10 shrink-0" strokeWidth={1.6} />
                 </div>
                 <h2 className="font-display text-3xl tracking-tight sm:text-4xl">
                   Infotafel <span className="text-amber italic">abfotografieren</span>
@@ -526,14 +592,7 @@ export default function ScanFlow() {
             onChange={(e) => {
               const files = e.target.files;
               if (files && files.length > 0) {
-                // Bei mehreren Bildern: Direct OCR (kein Crop)
-                if (files.length > 1) {
-                  handleMultipleFiles(Array.from(files));
-                } else {
-                  // Einzelbild: Crop-Editor anzeigen
-                  const file = files[0];
-                  setCropImage({ url: URL.createObjectURL(file), file });
-                }
+                handleMultipleFiles(Array.from(files));
               }
               e.target.value = "";
             }}
@@ -546,7 +605,7 @@ export default function ScanFlow() {
             className="hidden"
             onChange={(e) => {
               const f = e.target.files?.[0];
-              if (f) setCropImage({ url: URL.createObjectURL(f), file: f });
+              if (f) runOcr(f);
               e.target.value = "";
             }}
           />
@@ -556,13 +615,11 @@ export default function ScanFlow() {
       {/* -------- Schritt 2: Verarbeitung -------- */}
       {step === "processing" && (
         <div className="anim-fade-in card mx-auto grid max-w-xl place-items-center p-14 text-center">
-          <div className="relative mb-8 flex items-center justify-center">
-            <div className="relative size-40">
-              <div className="radar-sweep absolute inset-0 rounded-full opacity-60" />
-              <div className="absolute inset-3 rounded-full border border-line-2" />
-              <div className="absolute inset-10 rounded-full border border-line" />
-              <div className="absolute left-1/2 top-1/2 size-3 -translate-x-1/2 -translate-y-1/2 rounded-full bg-amber shadow-[0_0_12px_rgba(233,161,59,0.6)]" />
-            </div>
+          <div className="relative mb-8 flex size-40 items-center justify-center">
+            <div className="radar-sweep absolute inset-0 rounded-full opacity-60" />
+            <div className="absolute inset-3 rounded-full border border-line-2" />
+            <div className="absolute inset-10 rounded-full border border-line" />
+            <div className="relative z-10 size-2 rounded-full bg-amber shadow-[0_0_10px_rgba(233,161,59,0.9)]" />
           </div>
           <p className="shimmer-text font-mono text-sm tracking-wide">{STAGES[stageIdx]}</p>
           <p className="mt-3 max-w-xs text-xs leading-relaxed text-dim">
@@ -913,17 +970,8 @@ export default function ScanFlow() {
           <X className="size-5" />
         </button>
       )}
-
-      {/* Zuschnitt-Editor */}
-      {cropImage && (
-        <CropEditor
-          imageUrl={cropImage.url}
-          onCrop={(croppedFile) => {
-            setCropImage(null);
-            handleMultipleFiles([croppedFile]);
-          }}
-          onCancel={() => setCropImage(null)}
-        />
+      {cropSrc && (
+        <CropEditor src={cropSrc} onCrop={confirmCrop} onCancel={skipCrop} />
       )}
     </div>
   );

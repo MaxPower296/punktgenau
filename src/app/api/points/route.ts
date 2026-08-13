@@ -23,6 +23,8 @@ const EDITABLE = [
   "source",
   "favorite",
   "visited",
+  "visitedAt",
+  "imageUrl",
 ] as const;
 
 type PointPayload = Partial<Record<(typeof EDITABLE)[number], unknown>> & {

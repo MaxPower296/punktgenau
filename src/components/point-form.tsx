@@ -17,6 +17,8 @@ export interface PointDraft {
   phone: string;
   notes: string;
   rawGps: string;
+  visitedAt: string;
+  imageUrl: string;
 }
 
 export const EMPTY_DRAFT: PointDraft = {
@@ -34,6 +36,8 @@ export const EMPTY_DRAFT: PointDraft = {
   phone: "",
   notes: "",
   rawGps: "",
+  visitedAt: "",
+  imageUrl: "",
 };
 
 const CATEGORY_SUGGESTIONS = [
@@ -209,9 +213,38 @@ export function PointForm({
           className="field !min-h-14"
           value={draft.notes}
           onChange={(e) => set("notes", e.target.value)}
-          placeholder="Eigene Anmerkungen …"
+          placeholder="z. B. Gut für Kinder, Ruhig nach 22 Uhr …"
         />
       </Field>
+
+      <div className="grid grid-cols-2 gap-3">
+        <Field label="Besucht am" hint="Datum">
+          <input
+            type="date"
+            className="field"
+            value={draft.visitedAt}
+            onChange={(e) => set("visitedAt", e.target.value)}
+          />
+        </Field>
+        <Field label="Foto URL" hint="optional">
+          <input
+            className="field"
+            value={draft.imageUrl}
+            onChange={(e) => set("imageUrl", e.target.value)}
+            placeholder="https://… oder base64"
+          />
+        </Field>
+      </div>
+
+      <div className="flex flex-wrap gap-1.5">
+        {["V/E","Strom","WLAN","Wasser","Dusche","Toilette","Grill","Spielplatz"].map(eq=>(
+          <button key={eq} type="button" onClick={()=>{
+            const has = draft.equipment.includes(eq);
+            const next = has ? draft.equipment.split(",").map(s=>s.trim()).filter(s=>s!==eq).join(", ") : draft.equipment ? draft.equipment+", "+eq : eq;
+            set("equipment", next);
+          }} className={`chip ${draft.equipment.includes(eq)?"!border-amber !text-amber":""}`}>{eq}</button>
+        ))}
+      </div>
     </div>
   );
 }

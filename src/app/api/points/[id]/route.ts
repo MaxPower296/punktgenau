@@ -2,22 +2,44 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { points } from "@/db/schema";
 import { eq } from "drizzle-orm";
-import sharp from "sharp";
 
 type Ctx = { params: Promise<{ id: string }> };
 
 export async function PATCH(req: NextRequest, ctx: Ctx) {
   const { id } = await ctx.params;
-  const body = await req.json().catch(() => ({})) as Record<string, unknown>;
+  const body = (await req.json()) as Record<string, unknown>;
   const allowed = new Set([
-    "name", "refNumber", "category", "lat", "lng", "altitude", "maxWomos",
-    "equipment", "description", "prices", "directions", "phone", "notes",
-    "rawGps", "favorite", "visited", "visitedAt", "address", "photoUrl",
+    "name",
+    "refNumber",
+    "category",
+    "lat",
+    "lng",
+    "altitude",
+    "maxWomos",
+    "equipment",
+    "description",
+    "prices",
+    "directions",
+    "phone",
+    "notes",
+    "rawGps",
+    "favorite",
+    "visited",
+    "visitedAt",
+    "imageUrl",
   ]);
   const set: Record<string, unknown> = { updatedAt: new Date() };
   for (const [k, v] of Object.entries(body)) {
-    if (allowed.has(k)) set[k] = v;
+    if (allowed.has(k)) {
+      if (k === "visitedAt") {
+        set[k] = v ? new Date(v as string) : null;
+      } else {
+        set[k] = v;
+      }
+    }
   }
+  if (body.visited === true && !body.visitedAt) set.visitedAt = new Date();
+  if (body.visited === false) set.visitedAt = null;
   if (set.lat !== undefined) {
     const lat = Number(set.lat);
     if (!Number.isFinite(lat) || Math.abs(lat) > 90) {
@@ -31,19 +53,6 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
       return NextResponse.json({ error: "Ungültige Longitude" }, { status: 400 });
     }
     set.lng = lng;
-  }
-  // Besucht-Datum automatisch setzen
-  if (set.visited === true && !set.visitedAt) {
-    set.visitedAt = new Date();
-  }
-  // Foto komprimieren und als Base64 speichern
-  if (set.photoUrl && typeof set.photoUrl === "string" && set.photoUrl.startsWith("data:image")) {
-    try {
-      const base64Data = set.photoUrl.split(",")[1];
-      const buf = Buffer.from(base64Data, "base64");
-      const resized = await sharp(buf).resize({ width: 600, withoutEnlargement: true }).jpeg({ quality: 75 }).toBuffer();
-      set.photoUrl = `data:image/jpeg;base64,${resized.toString("base64")}`;
-    } catch { /* falls sharp fehlschlägt, Original behalten */ }
   }
   const [updated] = await db.update(points).set(set).where(eq(points.id, id)).returning();
   if (!updated) return NextResponse.json({ error: "Nicht gefunden" }, { status: 404 });

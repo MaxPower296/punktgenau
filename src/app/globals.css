@@ -21,6 +21,19 @@
   --color-sky: #7fb4d8;
 }
 
+html[data-theme="light"] {
+  --color-ink: #f7f3e8;
+  --color-ink-2: #ede7d6;
+  --color-panel: #ffffff;
+  --color-card: #ffffff;
+  --color-line: #d8d0b8;
+  --color-line-2: #c2b8a0;
+  --color-paper: #1a1a18;
+  --color-mute: #5a5a55;
+  --color-dim: #8a8a86;
+  --color-sage: #6b7a5e;
+}
+
 html {
   scroll-behavior: smooth;
 }

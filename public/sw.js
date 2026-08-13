@@ -1,14 +1,44 @@
-/* Punktgenau Service Worker – nur für Installation */
-self.addEventListener("install", () => {
-  self.skipWaiting();
+/* Punktgenau Service Worker – Android/PWA */
+const VERSION = "punktgenau-v1.0.0";
+const STATIC_CACHE = `${VERSION}-static`;
+const RUNTIME_CACHE = `${VERSION}-runtime`;
+const TILE_CACHE = `${VERSION}-tiles`;
+
+const STATIC_ASSETS = [
+  "/",
+  "/scan",
+  "/maps",
+  "/offline.html",
+  "/manifest.webmanifest",
+  "/icons/icon-192.png",
+  "/icons/icon-512.png",
+  "/icons/maskable-192.png",
+  "/icons/maskable-512.png"
+];
+
+self.addEventListener("install", (event) => {
+  event.waitUntil(
+    caches
+      .open(STATIC_CACHE)
+      .then((cache) => cache.addAll(STATIC_ASSETS))
+      .then(() => self.skipWaiting())
+  );
 });
 
 self.addEventListener("activate", (event) => {
-  event.waitUntil(self.clients.claim());
+  event.waitUntil(
+    caches
+      .keys()
+      .then((keys) =>
+        Promise.all(
+          keys
+            .filter((key) => key.startsWith("punktgenau-") && !key.startsWith(VERSION))
+            .map((key) => caches.delete(key))
+        )
+      )
+      .then(() => self.clients.claim())
+  );
 });
-
-// Kein fetch-Handler – nichts wird blockiert oder gecacht
-// Die App funktioniert normal über das Netzwerk
 
 function isTileRequest(url) {
   return (

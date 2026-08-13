@@ -6,6 +6,7 @@ import {
   boolean,
   timestamp,
   uuid,
+  jsonb,
 } from "drizzle-orm/pg-core";
 
 export const maps = pgTable("maps", {
@@ -13,6 +14,7 @@ export const maps = pgTable("maps", {
   name: text("name").notNull(),
   description: text("description").default(""),
   color: text("color").default("#E9A13B"),
+  shareToken: text("share_token"),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
     .defaultNow(),
@@ -42,8 +44,7 @@ export const points = pgTable("points", {
   favorite: boolean("favorite").notNull().default(false),
   visited: boolean("visited").notNull().default(false),
   visitedAt: timestamp("visited_at", { withTimezone: true }),
-  photoUrl: text("photo_url"), // Base64 oder URL
-  address: text("address"), // Reverse-Geocoding Ergebnis
+  imageUrl: text("image_url").default(""),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
     .defaultNow(),
@@ -52,6 +53,25 @@ export const points = pgTable("points", {
     .defaultNow(),
 });
 
+export const pointImages = pgTable("point_images", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  pointId: uuid("point_id")
+    .notNull()
+    .references(() => points.id, { onDelete: "cascade" }),
+  url: text("url").notNull(),
+  caption: text("caption").default(""),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
+
+export const backupMeta = pgTable("backup_meta", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  data: jsonb("data"),
+});
+
 export type MapRow = typeof maps.$inferSelect;
 export type PointRow = typeof points.$inferSelect;
+export type PointImageRow = typeof pointImages.$inferSelect;
 export type NewPoint = typeof points.$inferInsert;

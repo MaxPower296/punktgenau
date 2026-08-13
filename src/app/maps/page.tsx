@@ -2,9 +2,10 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Map as MapIcon, MapPin, Plus, ScanLine, Trash2, Download, ChevronRight } from "lucide-react";
+import { Map as MapIcon, MapPin, Plus, ScanLine, Trash2, Download, ChevronRight, Upload } from "lucide-react";
 import type { MapWithCount } from "@/lib/types";
 import { toast } from "@/components/ui";
+import { BackupPanel } from "@/components/feature-panels";
 
 export default function MapsPage() {
   const [maps, setMaps] = useState<MapWithCount[] | null>(null);
@@ -64,7 +65,7 @@ export default function MapsPage() {
         <div className="flex w-full max-w-md items-end gap-2 sm:w-auto">
           <input
             className="field flex-1"
-            placeholder="Neue Karte, z. B. „Schottland Westküste“"
+            placeholder="Neue Karte, z. B. Schottland Westkuste"
             value={name}
             onChange={(e) => setName(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && create()}
@@ -74,6 +75,32 @@ export default function MapsPage() {
             Anlegen
           </button>
         </div>
+      </div>
+
+      <div className="card mb-6 flex flex-wrap items-center gap-3 p-4">
+        <BackupPanel />
+        <label className="btn btn-ghost !py-1.5 !text-xs cursor-pointer">
+          <Upload className="size-3" /> GPX/KML Import
+          <input
+            type="file"
+            accept=".gpx,.kml"
+            className="hidden"
+            onChange={async (e) => {
+              const f = e.target.files?.[0];
+              if (!f || !maps?.[0]) return;
+              const fd = new FormData();
+              fd.append("file", f);
+              fd.append("mapId", maps[0].id);
+              const r = await fetch("/api/import-gpx", { method: "POST", body: fd });
+              const d = await r.json();
+              if (r.ok) {
+                toast(`${d.imported} Punkte importiert`);
+                load();
+              } else toast(d.error || "Import fehlgeschlagen", "err");
+            }}
+          />
+        </label>
+        <span className="text-xs text-dim ml-auto">Backup sichert alle Karten & Punkte als JSON</span>
       </div>
 
       {!maps ? (

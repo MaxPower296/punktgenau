@@ -22,48 +22,22 @@ export function PwaRegister() {
     if (typeof window === "undefined") return;
     if (!("serviceWorker" in navigator)) return;
 
-    // Service Worker sofort und aggressiv registrieren
-    const registerSW = () => {
-      navigator.serviceWorker
-        .register("/sw.js", { scope: "/" })
-        .then((registration) => {
-          console.log("[PWA] SW registriert:", registration.scope);
-          if (registration.waiting) {
-            registration.waiting.postMessage({ type: "SKIP_WAITING" });
-          }
-          registration.addEventListener("updatefound", () => {
-            const worker = registration.installing;
-            if (!worker) return;
-            worker.addEventListener("statechange", () => {
-              if (worker.state === "installed" && navigator.serviceWorker.controller) {
-                toast("Neue App-Version verfügbar – beim nächsten Start aktiv.");
-              }
-            });
+    navigator.serviceWorker
+      .register("/sw.js", { scope: "/" })
+      .then((registration) => {
+        registration.addEventListener("updatefound", () => {
+          const worker = registration.installing;
+          if (!worker) return;
+          worker.addEventListener("statechange", () => {
+            if (worker.state === "installed" && navigator.serviceWorker.controller) {
+              toast("Neue App-Version verfügbar – beim nächsten Start aktiv.");
+            }
           });
-        })
-        .catch((err) => {
-          console.warn("[PWA] SW Fehler:", err);
         });
-    };
-
-    // Sofort registrieren
-    registerSW();
-
-    // Bei Sichtbarkeitsänderung nochmal versuchen (Chrome manchmal lazy)
-    document.addEventListener("visibilitychange", () => {
-      if (document.visibilityState === "visible") {
-        navigator.serviceWorker.getRegistration("/").then((reg) => {
-          if (!reg) registerSW();
-        });
-      }
-    });
-
-    // Nach 2 Sekunden nochmal prüfen
-    setTimeout(() => {
-      navigator.serviceWorker.getRegistration("/").then((reg) => {
-        if (!reg) registerSW();
+      })
+      .catch(() => {
+        // PWA darf nie die Haupt-App blockieren.
       });
-    }, 2000);
   }, []);
 
   useEffect(() => {
