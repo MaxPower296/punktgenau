@@ -3,7 +3,7 @@
   "regions": ["fra1"],
   "functions": {
     "app/api/ocr/route.ts": {
-      "maxDuration": 60,
+      "maxDuration": 120,
       "memory": 2048
     }
   },
