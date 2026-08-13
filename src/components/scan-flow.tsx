@@ -226,18 +226,43 @@ export default function ScanFlow() {
       const uploadFile = await compressForUpload(file);
       const form = new FormData();
       form.append("file", uploadFile);
-        const res = await fetch("/api/ocr", { method: "POST", body: form });
-        const data: any = await res.json().catch(()=> ({}));
-        if (!res.ok || data?.error) {
-          // Vercel Server-OCR ausgefallen (Cannot find module / Memory) -> Browser-Fallback versuchen
-          if (data?.fallback || String(data?.details || data?.error || "").includes("Cannot find module")) {
-            toast("Server-OCR ausgefallen - versuche OCR direkt im Browser…", "err");
-            const ok = await runClientOcrFallback(file, index, currentQueue);
+        // Timeout nach 55s - Vercel Hobby hat 10s Limit, dann schnell auf Browser umschalten
+        const controller = new AbortController();
+        const timeout = setTimeout(()=> controller.abort(), 55000);
+        let res: Response;
+        try {
+          res = await fetch("/api/ocr", { method: "POST", body: form, signal: controller.signal });
+        } catch (e:any) {
+          clearTimeout(timeout);
+          if (e?.name==="AbortError") {
+            toast("Server braucht zu lange (Vercel Hobby 10s Limit) - starte Browser-OCR…", "err");
+            const ok = await runClientOcrFallback(uploadFile, index, currentQueue);
             if (ok) return;
           }
-          setError(data?.error ?? "Analyse fehlgeschlagen");
+          throw e;
+        }
+        clearTimeout(timeout);
+        const data: any = await res.json().catch(()=> ({}));
+        if (!res.ok) {
+          const isFallback = data?.fallback || res.status===503 || res.status===500 || res.status===504;
+          if (isFallback) {
+            toast(`Server meldet: ${data?.error || "503"} - versuche Browser-OCR…`, "err");
+            const ok = await runClientOcrFallback(uploadFile, index, currentQueue);
+            if (ok) return;
+          }
+          setError(data?.error ?? `Analyse fehlgeschlagen (HTTP ${res.status})`);
           setStep("capture");
           toast(data?.error ?? `Analyse von Bild ${index + 1} fehlgeschlagen`, "err");
+          return;
+        }
+        if (data?.error) {
+          if (data.fallback) {
+            const ok = await runClientOcrFallback(uploadFile, index, currentQueue);
+            if (ok) return;
+          }
+          setError(data.error);
+          setStep("capture");
+          toast(data.error, "err");
           return;
         }
       setRotation(data.rotation);
