@@ -226,27 +226,30 @@ export default function ScanFlow() {
       const uploadFile = await compressForUpload(file);
       const form = new FormData();
       form.append("file", uploadFile);
-        // Timeout nach 55s - Vercel Hobby hat 10s Limit, dann schnell auf Browser umschalten
+        // Vercel Hobby: nach 10s killt der Server - nach 11s auf Browser-OCR umschalten
         const controller = new AbortController();
-        const timeout = setTimeout(()=> controller.abort(), 55000);
+        const timeout = setTimeout(()=> controller.abort(), 12000);
         let res: Response;
         try {
           res = await fetch("/api/ocr", { method: "POST", body: form, signal: controller.signal });
         } catch (e:any) {
           clearTimeout(timeout);
           if (e?.name==="AbortError") {
-            toast("Server braucht zu lange (Vercel Hobby 10s Limit) - starte Browser-OCR…", "err");
+            toast("Server braucht zu lange (Vercel 10s Limit) - starte Browser-OCR…", "err");
             const ok = await runClientOcrFallback(uploadFile, index, currentQueue);
             if (ok) return;
           }
           throw e;
         }
         clearTimeout(timeout);
-        const data: any = await res.json().catch(()=> ({}));
+        // Vercel gibt bei Timeout oft HTML statt JSON zurück -> als Fallback werten
+        const text = await res.text();
+        let data: any = {};
+        try { data = text ? JSON.parse(text) : {}; } catch { data = { error: text.slice(0,200) || `HTTP ${res.status}`, fallback: res.status>=500 }; }
         if (!res.ok) {
-          const isFallback = data?.fallback || res.status===503 || res.status===500 || res.status===504;
+          const isFallback = data?.fallback || res.status>=500 || res.status===504 || res.status===502;
           if (isFallback) {
-            toast(`Server meldet: ${data?.error || "503"} - versuche Browser-OCR…`, "err");
+            toast(`Server meldet: ${String(data?.error||"Timeout").slice(0,80)} - versuche Browser-OCR…`, "err");
             const ok = await runClientOcrFallback(uploadFile, index, currentQueue);
             if (ok) return;
           }
